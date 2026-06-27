@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Header from "./components/Header";
 import HeroSection from "./components/HeroSection";
 import TrustSection from "./components/TrustSection";
@@ -10,10 +10,25 @@ import FAQSection from "./components/FAQSection";
 import FinalCTA from "./components/FinalCTA";
 import Footer from "./components/Footer";
 import WhatsAppButton from "./components/WhatsAppButton";
+import AdminDashboard from "./components/AdminDashboard";
 import { Sparkles, ShieldCheck, MapPin } from "lucide-react";
 
 export default function App() {
+  const [pathname, setPathname] = useState(() => (typeof window !== "undefined" ? window.location.pathname : "/"));
   const [showMobileSticky, setShowMobileSticky] = useState(false);
+
+  useEffect(() => {
+    const updatePathname = () => setPathname(window.location.pathname);
+    updatePathname();
+    window.addEventListener("popstate", updatePathname);
+    return () => window.removeEventListener("popstate", updatePathname);
+  }, []);
+
+  const isAdminRoute = useMemo(() => pathname.startsWith("/admin"), [pathname]);
+
+  if (isAdminRoute) {
+    return <AdminDashboard />;
+  }
 
   useEffect(() => {
     const handleScroll = () => {

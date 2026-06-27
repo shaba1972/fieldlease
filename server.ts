@@ -13,8 +13,42 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
-// In-memory lead storage
-//const leads: any[] = [];
+interface AdminLeadRecord {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  whatsapp?: string;
+  companyName?: string;
+  landType: string;
+  intendedUse: string;
+  preferredState: string;
+  preferredLga: string;
+  minSize: string;
+  maxBudget: string;
+  leaseDuration: string;
+  additionalRequirements: string;
+  submittedAt: string;
+  contactStatus: "new" | "contacted" | "matched" | "not-interested";
+  status: "new" | "follow-up" | "qualified" | "closed";
+  internalNotes: string;
+}
+
+const adminLeads: AdminLeadRecord[] = [];
+let adminSessionToken: string | null = null;
+
+function createAdminToken(username: string) {
+  return Buffer.from(`${username}:${Date.now()}`).toString("base64");
+}
+
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization || "";
+  if (!adminSessionToken || authHeader !== `Bearer ${adminSessionToken}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  next();
+}
 
 // Gemini client initialization (with safety fallback for missing key)
 let ai: GoogleGenAI | null = null;
@@ -69,6 +103,29 @@ app.post("/api/leads", async (req, res) => {
     }
 
     console.log("Inserted lead:", data);
+
+    const newAdminLead: AdminLeadRecord = {
+      id: data.id,
+      fullName: leadData.fullName,
+      email: leadData.email,
+      phone: leadData.phone,
+      whatsapp: leadData.whatsapp,
+      companyName: leadData.companyName,
+      landType: leadData.landType,
+      intendedUse: leadData.intendedUse,
+      preferredState: leadData.preferredState,
+      preferredLga: leadData.preferredLga,
+      minSize: leadData.minSize,
+      maxBudget: leadData.maxBudget,
+      leaseDuration: leadData.leaseDuration,
+      additionalRequirements: leadData.additionalRequirements,
+      submittedAt: new Date().toISOString(),
+      contactStatus: "new",
+      status: "new",
+      internalNotes: "",
+    };
+
+    adminLeads.unshift(newAdminLead);
 
     const aiAssessment: any = {};
 
@@ -151,6 +208,35 @@ Generate a detailed zoning, capacity, and leasing advisory report for this land 
     console.error("Lead endpoint error:", error);
     return res.status(500).json({ error: "Failed to save lead or generate assessment." });
   }
+});
+
+app.post("/api/admin/login", (req, res) => {
+  const username = String(req.body?.username || "");
+  const password = String(req.body?.password || "");
+  const expectedUsername = process.env.ADMIN_USERNAME || "admin";
+  const expectedPassword = process.env.ADMIN_PASSWORD || "fieldlease2026";
+
+  if (username !== expectedUsername || password !== expectedPassword) {
+    return res.status(401).json({ error: "Invalid admin credentials" });
+  }
+
+  adminSessionToken = createAdminToken(username);
+  return res.json({ token: adminSessionToken, username });
+});
+
+app.get("/api/admin/leads", requireAdmin, (req, res) => {
+  res.json({ leads: adminLeads.slice().sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)) });
+});
+
+app.patch("/api/admin/leads/:id", requireAdmin, (req, res) => {
+  const lead = adminLeads.find((item) => item.id === req.params.id);
+  if (!lead) {
+    return res.status(404).json({ error: "Lead not found" });
+  }
+
+  const updates = req.body || {};
+  Object.assign(lead, updates);
+  return res.json({ lead });
 });
 
 // Configure Vite or serve static production bundle
