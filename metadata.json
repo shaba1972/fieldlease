@@ -1,0 +1,6 @@
+{
+  "name": "Temporary Land Lease Finder",
+  "description": "A premium modern PropTech platform connecting land seekers with verified landowners for short- and long-term temporary land leasing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
