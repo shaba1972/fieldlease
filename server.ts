@@ -32,6 +32,7 @@ if (process.env.GEMINI_API_KEY) {
 // Leads API endpoint
 app.post("/api/leads", async (req, res) => {
   const leadData = req.body;
+  console.log("Incoming lead:", req.body);
 
   // Basic validation
   if (!leadData.fullName || !leadData.email || !leadData.phone || !leadData.landType || !leadData.intendedUse) {
@@ -60,9 +61,14 @@ app.post("/api/leads", async (req, res) => {
       .single();
 
     if (error) {
-      console.error(error);
-      return res.status(500).json({ error: "Failed to save lead." });
+      console.error("Supabase Error:", error);
+      return res.status(500).json({
+        success: false,
+        error: error?.message ?? "Database insert failed.",
+      });
     }
+
+    console.log("Inserted lead:", data);
 
     const aiAssessment: any = {};
 
