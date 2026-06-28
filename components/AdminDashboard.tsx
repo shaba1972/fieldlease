@@ -55,33 +55,51 @@ export default function AdminDashboard() {
   const [noteDraft, setNoteDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const fetchLeads = async () => {
+    if (!token) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch("/api/admin/leads", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to load leads");
+      }
+
+      const data = await response.json();
+      setLeads(data.leads || []);
+      if (data.leads?.length) {
+        setSelectedLeadId((current) => current || data.leads[0].id);
+      }
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Unable to load leads");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchLeads();
+  }, [token]);
+
   useEffect(() => {
     if (!token) return;
 
-    const fetchLeads = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch("/api/admin/leads", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!response.ok) {
-          throw new Error("Unable to load leads");
-        }
-
-        const data = await response.json();
-        setLeads(data.leads || []);
-        if (data.leads?.length) {
-          setSelectedLeadId((current) => current || data.leads[0].id);
-        }
-      } catch (error) {
-        setLoginError(error instanceof Error ? error.message : "Unable to load leads");
-      } finally {
-        setLoading(false);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void fetchLeads();
       }
     };
 
-    void fetchLeads();
+    window.addEventListener("focus", handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("focus", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [token]);
 
   const filteredLeads = useMemo(() => {
@@ -347,13 +365,22 @@ export default function AdminDashboard() {
                 <h2 className="text-xl font-bold text-slate-900">Recent requests</h2>
                 <p className="text-sm text-slate-500">Search, filter, and track each lead.</p>
               </div>
-              <button
-                onClick={exportCsv}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                <Download className="h-4 w-4" />
-                Export CSV
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void fetchLeads()}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Refresh
+                </button>
+                <button
+                  onClick={exportCsv}
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </button>
+              </div>
             </div>
 
             <div className="mb-4 flex flex-col gap-3 lg:flex-row">

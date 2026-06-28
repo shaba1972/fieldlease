@@ -72,6 +72,12 @@ export default function Header({ onCtaClick }: HeaderProps) {
               <Phone className="w-4 h-4 text-emerald-600" />
               <span>+234 815 222 8251</span>
             </a>
+            <a
+              href="/admin"
+              className="px-4 py-2.5 rounded-xl border border-emerald-200 text-emerald-700 font-semibold text-sm transition-all duration-200 hover:bg-emerald-50"
+            >
+              Admin Dashboard
+            </a>
             <button
               onClick={onCtaClick}
               className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm transition-all duration-200 shadow-md shadow-emerald-700/15 hover:shadow-emerald-700/25 active:scale-[0.98]"
@@ -143,6 +149,13 @@ export default function Header({ onCtaClick }: HeaderProps) {
             >
               <Phone className="w-4 h-4 text-emerald-600" />
               <span>Call Advising: +234 815 222 8251</span>
+            </a>
+            <a
+              href="/admin"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="w-full py-3.5 rounded-xl border border-emerald-200 text-emerald-700 font-bold text-sm text-center transition-all"
+            >
+              Admin Dashboard
             </a>
             <button
               onClick={() => {
