@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, LogOut, MessageSquare, Phone, Search, ShieldCheck, Sparkles, UserCircle } from "lucide-react";
+import { BellRing, CalendarDays, Download, LogOut, MessageSquare, Phone, Search, ShieldCheck, Sparkles, UserCircle } from "lucide-react";
 
 type ContactStatus = "new" | "contacted" | "matched" | "not-interested";
 type LeadStatus = "new" | "follow-up" | "qualified" | "closed";
+type LeadPriority = "low" | "medium" | "high" | "urgent";
+type ActivityType = "call" | "whatsapp" | "email" | "note" | "status-change" | "system";
+
+interface LeadActivityEntry {
+  id: string;
+  type: ActivityType;
+  message: string;
+  createdAt: string;
+  actor?: string;
+}
 
 interface AdminLead {
   id: string;
@@ -22,6 +32,13 @@ interface AdminLead {
   contactStatus: ContactStatus;
   status: LeadStatus;
   internalNotes: string;
+  assignee: string;
+  priority: LeadPriority;
+  tags: string[];
+  followUpDate: string | null;
+  reminderEnabled: boolean;
+  reminderSentAt: string | null;
+  activityHistory: LeadActivityEntry[];
 }
 
 const CONTACT_OPTIONS: Array<{ value: "all" | ContactStatus; label: string }> = [
@@ -32,7 +49,9 @@ const CONTACT_OPTIONS: Array<{ value: "all" | ContactStatus; label: string }> = 
   { value: "not-interested", label: "Not interested" },
 ];
 
-function formatDate(value: string) {
+function formatDate(value?: string | null) {
+  if (!value) return "Not scheduled";
+
   return new Date(value).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -41,6 +60,16 @@ function formatDate(value: string) {
     minute: "2-digit",
   });
 }
+
+const PRIORITY_OPTIONS: Array<{ value: LeadPriority; label: string }> = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
+];
+
+const TAG_OPTIONS = ["Agriculture", "Storage", "Events", "Industrial", "Renewable", "Construction", "Research", "Logistics"];
+const STAFF_OPTIONS = ["Amina", "Kelechi", "Tunde", "Nneka", "Seyi"];
 
 export default function AdminDashboard() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("fieldlease_admin_token"));
@@ -53,6 +82,13 @@ export default function AdminDashboard() {
   const [contactFilter, setContactFilter] = useState<"all" | ContactStatus>("all");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [assigneeDraft, setAssigneeDraft] = useState("");
+  const [priorityDraft, setPriorityDraft] = useState<LeadPriority>("medium");
+  const [tagsDraft, setTagsDraft] = useState<string[]>([]);
+  const [followUpDateDraft, setFollowUpDateDraft] = useState("");
+  const [reminderEnabledDraft, setReminderEnabledDraft] = useState(false);
+  const [activityTypeDraft, setActivityTypeDraft] = useState<ActivityType>("call");
+  const [activityMessageDraft, setActivityMessageDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
   const fetchLeads = async () => {
@@ -141,6 +177,11 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (selectedLead) {
       setNoteDraft(selectedLead.internalNotes || "");
+      setAssigneeDraft(selectedLead.assignee || "");
+      setPriorityDraft(selectedLead.priority || "medium");
+      setTagsDraft(selectedLead.tags || []);
+      setFollowUpDateDraft(selectedLead.followUpDate || "");
+      setReminderEnabledDraft(Boolean(selectedLead.reminderEnabled));
     }
   }, [selectedLead]);
 
@@ -199,14 +240,64 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSaveNotes = async () => {
+  const createActivityEntry = (type: ActivityType, message: string): LeadActivityEntry => ({
+    id: `${selectedLead?.id || "lead"}-${Date.now()}`,
+    type,
+    message,
+    createdAt: new Date().toISOString(),
+  });
+
+  const handleSaveWorkflow = async () => {
     if (!selectedLead) return;
-    await updateLead(selectedLead.id, { internalNotes: noteDraft });
+    await updateLead(selectedLead.id, {
+      internalNotes: noteDraft,
+      assignee: assigneeDraft,
+      priority: priorityDraft,
+      tags: tagsDraft,
+      followUpDate: followUpDateDraft || null,
+      reminderEnabled: reminderEnabledDraft,
+    });
+  };
+
+  const handleAddActivity = async () => {
+    if (!selectedLead || !activityMessageDraft.trim()) return;
+
+    const entry = createActivityEntry(activityTypeDraft, activityMessageDraft.trim());
+    await updateLead(selectedLead.id, {
+      activityHistory: [entry, ...(selectedLead.activityHistory || [])],
+    });
+    setActivityMessageDraft("");
   };
 
   const handleStatusChange = async (nextStatus: ContactStatus) => {
     if (!selectedLead) return;
-    await updateLead(selectedLead.id, { contactStatus: nextStatus });
+
+    const entry = createActivityEntry("status-change", `Contact status changed to ${nextStatus}`);
+    await updateLead(selectedLead.id, {
+      contactStatus: nextStatus,
+      activityHistory: [entry, ...(selectedLead.activityHistory || [])],
+    });
+  };
+
+  const handleReminder = async () => {
+    if (!selectedLead) return;
+
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+
+    const canNotify = typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted";
+    if (canNotify) {
+      new Notification("FieldLease follow-up reminder", {
+        body: `${selectedLead.fullName} is due for follow-up today.`,
+      });
+    } else if (typeof window !== "undefined") {
+      window.alert(`Reminder queued for ${selectedLead.fullName}`);
+    }
+
+    await updateLead(selectedLead.id, {
+      reminderSentAt: new Date().toISOString(),
+    });
   };
 
   const handleLogout = () => {
@@ -230,6 +321,11 @@ export default function AdminDashboard() {
       lead.preferredLga,
       lead.contactStatus,
       lead.status,
+      lead.priority,
+      lead.assignee || "Unassigned",
+      lead.tags.join(", "),
+      lead.followUpDate || "",
+      lead.reminderEnabled ? "Yes" : "No",
       lead.internalNotes.replace(/\n/g, " "),
       lead.submittedAt,
     ]);
@@ -245,6 +341,11 @@ export default function AdminDashboard() {
       "LGA",
       "Contact Status",
       "Internal Status",
+      "Priority",
+      "Assigned To",
+      "Tags",
+      "Follow-up Date",
+      "Reminder Enabled",
       "Notes",
       "Submitted At",
     ];
@@ -439,6 +540,7 @@ export default function AdminDashboard() {
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">{lead.landType}</span>
                       <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700">{lead.contactStatus}</span>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-700">{lead.priority}</span>
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">{formatDate(lead.submittedAt)}</span>
                     </div>
                   </button>
@@ -492,6 +594,89 @@ export default function AdminDashboard() {
                     </select>
                   </label>
 
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center gap-2 font-semibold text-slate-900">
+                      <CalendarDays className="h-4 w-4 text-emerald-600" />
+                      Workflow details
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <label className="text-sm text-slate-600">
+                        <span className="mb-2 block font-semibold text-slate-700">Assignee</span>
+                        <select
+                          value={assigneeDraft}
+                          onChange={(event) => setAssigneeDraft(event.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none"
+                        >
+                          <option value="">Unassigned</option>
+                          {STAFF_OPTIONS.map((staff) => (
+                            <option key={staff} value={staff}>
+                              {staff}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-sm text-slate-600">
+                        <span className="mb-2 block font-semibold text-slate-700">Priority</span>
+                        <select
+                          value={priorityDraft}
+                          onChange={(event) => setPriorityDraft(event.target.value as LeadPriority)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none"
+                        >
+                          {PRIORITY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-sm text-slate-600">
+                        <span className="mb-2 block font-semibold text-slate-700">Follow-up date</span>
+                        <input
+                          type="date"
+                          value={followUpDateDraft}
+                          onChange={(event) => setFollowUpDateDraft(event.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700">
+                        <span>Reminder</span>
+                        <input
+                          type="checkbox"
+                          checked={reminderEnabledDraft}
+                          onChange={(event) => setReminderEnabledDraft(event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-3">
+                      <p className="mb-2 text-sm font-semibold text-slate-700">Tags</p>
+                      <div className="flex flex-wrap gap-2">
+                        {TAG_OPTIONS.map((tag) => {
+                          const active = tagsDraft.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => setTagsDraft((current) => (current.includes(tag) ? current.filter((value) => value !== tag) : [...current, tag]))}
+                              className={`rounded-full px-3 py-1 text-sm font-medium ${active ? "bg-emerald-600 text-white" : "bg-white text-slate-600"}`}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => void handleSaveWorkflow()}
+                      disabled={saving}
+                      className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {saving ? "Saving..." : "Save workflow"}
+                    </button>
+                  </div>
+
                   <label className="block text-sm">
                     <span className="mb-2 block font-semibold text-slate-700">Internal notes</span>
                     <textarea
@@ -499,17 +684,78 @@ export default function AdminDashboard() {
                       onChange={(event) => setNoteDraft(event.target.value)}
                       rows={6}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none"
-                      placeholder="Add call notes, next steps, priority, or follow-up reminders..."
+                      placeholder="Add call notes, next steps, or follow-up reminders..."
                     />
                   </label>
+                </div>
 
-                  <button
-                    onClick={() => void handleSaveNotes()}
-                    disabled={saving}
-                    className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {saving ? "Saving..." : "Save notes"}
-                  </button>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  <div className="flex items-center gap-2 font-semibold text-slate-900">
+                    <BellRing className="h-4 w-4 text-emerald-600" />
+                    Follow-up and reminders
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white px-3 py-1 font-medium text-slate-600">{selectedLead.followUpDate ? formatDate(selectedLead.followUpDate) : "No follow-up date"}</span>
+                    {selectedLead.reminderEnabled ? <span className="rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-700">Reminder enabled</span> : null}
+                  </div>
+                  {selectedLead.reminderEnabled && selectedLead.followUpDate ? (
+                    <button
+                      onClick={() => void handleReminder()}
+                      className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+                    >
+                      <BellRing className="h-4 w-4" />
+                      Send reminder
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  <div className="flex items-center gap-2 font-semibold text-slate-900">
+                    <MessageSquare className="h-4 w-4 text-emerald-600" />
+                    Activity history
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {(selectedLead.activityHistory || []).slice(0, 6).map((entry) => (
+                      <div key={entry.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900">{entry.message}</p>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-600">{entry.type}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">{formatDate(entry.createdAt)}</p>
+                      </div>
+                    ))}
+                    {!selectedLead.activityHistory?.length ? <p className="text-sm text-slate-500">No activity entries yet.</p> : null}
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <label className="block text-sm">
+                      <span className="mb-2 block font-semibold text-slate-700">Add activity</span>
+                      <select
+                        value={activityTypeDraft}
+                        onChange={(event) => setActivityTypeDraft(event.target.value as ActivityType)}
+                        className="mb-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none"
+                      >
+                        <option value="call">Call</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="email">Email</option>
+                        <option value="note">Note</option>
+                        <option value="status-change">Status change</option>
+                        <option value="system">System</option>
+                      </select>
+                      <textarea
+                        value={activityMessageDraft}
+                        onChange={(event) => setActivityMessageDraft(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none"
+                        placeholder="Capture the call outcome, message, or next step..."
+                      />
+                    </label>
+                    <button
+                      onClick={() => void handleAddActivity()}
+                      className="rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+                    >
+                      Add activity
+                    </button>
+                  </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">

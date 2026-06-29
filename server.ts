@@ -32,6 +32,19 @@ interface AdminLeadRecord {
   contactStatus: "new" | "contacted" | "matched" | "not-interested";
   status: "new" | "follow-up" | "qualified" | "closed";
   internalNotes: string;
+  assignee: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  tags: string[];
+  followUpDate: string | null;
+  reminderEnabled: boolean;
+  reminderSentAt: string | null;
+  activityHistory: Array<{
+    id: string;
+    type: string;
+    message: string;
+    createdAt: string;
+    actor?: string;
+  }>;
 }
 
 let adminSessionToken: string | null = null;
@@ -51,10 +64,20 @@ function getAdminMetaFromRow(row: Record<string, any>) {
     nestedAdminMeta = (aiAssessmentValue as Record<string, any>).adminMeta ?? {};
   }
 
+  const tags = Array.isArray(nestedAdminMeta.tags) ? nestedAdminMeta.tags : [];
+  const activityHistory = Array.isArray(nestedAdminMeta.activityHistory) ? nestedAdminMeta.activityHistory : [];
+
   return {
     contactStatus: (row.contact_status ?? row.contactStatus ?? nestedAdminMeta.contactStatus ?? nestedAdminMeta.contact_status ?? "new") as AdminLeadRecord["contactStatus"],
     status: (row.status ?? nestedAdminMeta.status ?? "new") as AdminLeadRecord["status"],
     internalNotes: (row.internal_notes ?? row.internalNotes ?? nestedAdminMeta.internalNotes ?? nestedAdminMeta.internal_notes ?? "") as string,
+    assignee: (nestedAdminMeta.assignee ?? "") as string,
+    priority: (nestedAdminMeta.priority ?? "medium") as AdminLeadRecord["priority"],
+    tags: tags as string[],
+    followUpDate: (nestedAdminMeta.followUpDate ?? nestedAdminMeta.follow_up_date ?? null) as string | null,
+    reminderEnabled: Boolean(nestedAdminMeta.reminderEnabled ?? nestedAdminMeta.reminder_enabled ?? false),
+    reminderSentAt: (nestedAdminMeta.reminderSentAt ?? nestedAdminMeta.reminder_sent_at ?? null) as string | null,
+    activityHistory: activityHistory as AdminLeadRecord["activityHistory"],
   };
 }
 
@@ -87,6 +110,28 @@ function normalizeLeadRecord(row: Record<string, any>): AdminLeadRecord {
     contactStatus: adminMeta.contactStatus,
     status: adminMeta.status,
     internalNotes: adminMeta.internalNotes,
+    assignee: adminMeta.assignee,
+    priority: adminMeta.priority,
+    tags: adminMeta.tags,
+    followUpDate: adminMeta.followUpDate,
+    reminderEnabled: adminMeta.reminderEnabled,
+    reminderSentAt: adminMeta.reminderSentAt,
+    activityHistory: adminMeta.activityHistory,
+  };
+}
+
+function buildNextAdminMeta(currentAdminMeta: Record<string, any>, updates: Record<string, any>) {
+  return {
+    contactStatus: updates.contactStatus ?? currentAdminMeta.contactStatus ?? "new",
+    status: updates.status ?? currentAdminMeta.status ?? "new",
+    internalNotes: updates.internalNotes ?? currentAdminMeta.internalNotes ?? "",
+    assignee: updates.assignee ?? currentAdminMeta.assignee ?? "",
+    priority: updates.priority ?? currentAdminMeta.priority ?? "medium",
+    tags: Array.isArray(updates.tags) ? updates.tags : (Array.isArray(currentAdminMeta.tags) ? currentAdminMeta.tags : []),
+    followUpDate: updates.followUpDate ?? currentAdminMeta.followUpDate ?? null,
+    reminderEnabled: updates.reminderEnabled ?? currentAdminMeta.reminderEnabled ?? false,
+    reminderSentAt: updates.reminderSentAt ?? currentAdminMeta.reminderSentAt ?? null,
+    activityHistory: Array.isArray(updates.activityHistory) ? updates.activityHistory : (Array.isArray(currentAdminMeta.activityHistory) ? currentAdminMeta.activityHistory : []),
   };
 }
 
@@ -275,6 +320,20 @@ app.post("/api/leads", async (req, res) => {
       contactStatus: "new",
       status: "new",
       internalNotes: "",
+      assignee: "",
+      priority: "medium",
+      tags: [],
+      followUpDate: null,
+      reminderEnabled: false,
+      reminderSentAt: null,
+      activityHistory: [
+        {
+          id: `${data.id}-created`,
+          type: "system",
+          message: "Lead submitted through the intake form.",
+          createdAt: new Date().toISOString(),
+        },
+      ],
     };
 
     try {
@@ -287,7 +346,7 @@ app.post("/api/leads", async (req, res) => {
       await supabase
   .from("leads")
   .update({
-    ai_assessment: aiAssessment,
+    ai_assessment: { ...aiAssessment, adminMeta: adminMetaPayload },
     contact_status: "new",
     status: "new",
     internal_notes: "",
@@ -377,11 +436,7 @@ app.patch("/api/admin/leads/:id", requireAdmin, async (req, res) => {
     }
 
     const currentAdminMeta = getAdminMetaFromRow(mergedRow);
-    const nextAdminMeta = {
-      contactStatus: updates.contactStatus ?? currentAdminMeta.contactStatus,
-      status: updates.status ?? currentAdminMeta.status,
-      internalNotes: updates.internalNotes ?? currentAdminMeta.internalNotes,
-    };
+    const nextAdminMeta = buildNextAdminMeta(currentAdminMeta, updates);
 
     try {
       const currentAiAssessment = mergedRow.ai_assessment ?? mergedRow.aiAssessment;

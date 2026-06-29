@@ -56,10 +56,19 @@ function getAdminMetaFromRow(row) {
   } else if (aiAssessmentValue && typeof aiAssessmentValue === "object") {
     nestedAdminMeta = aiAssessmentValue.adminMeta ?? {};
   }
+  const tags = Array.isArray(nestedAdminMeta.tags) ? nestedAdminMeta.tags : [];
+  const activityHistory = Array.isArray(nestedAdminMeta.activityHistory) ? nestedAdminMeta.activityHistory : [];
   return {
     contactStatus: row.contact_status ?? row.contactStatus ?? nestedAdminMeta.contactStatus ?? nestedAdminMeta.contact_status ?? "new",
     status: row.status ?? nestedAdminMeta.status ?? "new",
-    internalNotes: row.internal_notes ?? row.internalNotes ?? nestedAdminMeta.internalNotes ?? nestedAdminMeta.internal_notes ?? ""
+    internalNotes: row.internal_notes ?? row.internalNotes ?? nestedAdminMeta.internalNotes ?? nestedAdminMeta.internal_notes ?? "",
+    assignee: nestedAdminMeta.assignee ?? "",
+    priority: nestedAdminMeta.priority ?? "medium",
+    tags,
+    followUpDate: nestedAdminMeta.followUpDate ?? nestedAdminMeta.follow_up_date ?? null,
+    reminderEnabled: Boolean(nestedAdminMeta.reminderEnabled ?? nestedAdminMeta.reminder_enabled ?? false),
+    reminderSentAt: nestedAdminMeta.reminderSentAt ?? nestedAdminMeta.reminder_sent_at ?? null,
+    activityHistory
   };
 }
 function normalizeLeadRecord(row) {
@@ -83,7 +92,28 @@ function normalizeLeadRecord(row) {
     submittedAt,
     contactStatus: adminMeta.contactStatus,
     status: adminMeta.status,
-    internalNotes: adminMeta.internalNotes
+    internalNotes: adminMeta.internalNotes,
+    assignee: adminMeta.assignee,
+    priority: adminMeta.priority,
+    tags: adminMeta.tags,
+    followUpDate: adminMeta.followUpDate,
+    reminderEnabled: adminMeta.reminderEnabled,
+    reminderSentAt: adminMeta.reminderSentAt,
+    activityHistory: adminMeta.activityHistory
+  };
+}
+function buildNextAdminMeta(currentAdminMeta, updates) {
+  return {
+    contactStatus: updates.contactStatus ?? currentAdminMeta.contactStatus ?? "new",
+    status: updates.status ?? currentAdminMeta.status ?? "new",
+    internalNotes: updates.internalNotes ?? currentAdminMeta.internalNotes ?? "",
+    assignee: updates.assignee ?? currentAdminMeta.assignee ?? "",
+    priority: updates.priority ?? currentAdminMeta.priority ?? "medium",
+    tags: Array.isArray(updates.tags) ? updates.tags : Array.isArray(currentAdminMeta.tags) ? currentAdminMeta.tags : [],
+    followUpDate: updates.followUpDate ?? currentAdminMeta.followUpDate ?? null,
+    reminderEnabled: updates.reminderEnabled ?? currentAdminMeta.reminderEnabled ?? false,
+    reminderSentAt: updates.reminderSentAt ?? currentAdminMeta.reminderSentAt ?? null,
+    activityHistory: Array.isArray(updates.activityHistory) ? updates.activityHistory : Array.isArray(currentAdminMeta.activityHistory) ? currentAdminMeta.activityHistory : []
   };
 }
 function mapLeadUpdateToSupabase(updates) {
@@ -130,10 +160,93 @@ if (process.env.GEMINI_API_KEY) {
     }
   });
 }
+async function generateAiAssessment(payload) {
+  if (!ai) {
+    return {};
+  }
+  const prompt = `
+Analyze the following temporary land lease requirements for feasibility, capacity estimates, regulatory considerations, and lease strategy.
+Requirements:
+- Type of Land: ${payload.landType || "Not specified"}
+- Intended Use: ${payload.intendedUse || "Not specified"}
+- Minimum Size Needed: ${payload.minSize || "Not specified"}
+- Budget Constraint: ${payload.maxBudget || "Flexible"}
+- Lease Duration: ${payload.leaseDuration || "Flexible"}
+- Preferred Location: State of ${payload.preferredState || "Any State"}, Local Government of ${payload.preferredLga || "Any LGA"}
+- Additional Requirements: ${payload.additionalRequirements || "None specified"}
+
+Generate a detailed zoning, capacity, and leasing advisory report for this land seeker. You must output a JSON response matching the required schema.
+`;
+  const response = await ai.models.generateContent({
+    model: "gemini-3.5-flash",
+    contents: prompt,
+    config: {
+      systemInstruction: "You are a professional Land Consultant, Zoning Advisor, and Senior Real Estate Expert in temporary commercial, agricultural, and industrial land leasing. Generate realistic, data-driven, practical lease feasibility assessments.",
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: import_genai.Type.OBJECT,
+        properties: {
+          suitabilityScore: {
+            type: import_genai.Type.INTEGER,
+            description: "A feasibility score from 10 to 100 based on the viability of doing this temporarily."
+          },
+          assessment: {
+            type: import_genai.Type.STRING,
+            description: "A highly professional, authoritative assessment (2-3 sentences) of the lease viability."
+          },
+          capacityEstimate: {
+            type: import_genai.Type.STRING,
+            description: "Estimated capacity or layout potential for this specific size and use (e.g. storage volume, head of livestock, or layout staging)."
+          },
+          regulatoryBottlenecks: {
+            type: import_genai.Type.ARRAY,
+            items: { type: import_genai.Type.STRING },
+            description: "3 key local regulations, zoning constraints, or permits they should watch out for."
+          },
+          leasingRecommendations: {
+            type: import_genai.Type.ARRAY,
+            items: { type: import_genai.Type.STRING },
+            description: "3 high-value, professional recommendations for drafting a temporary lease for this use."
+          },
+          matchingInsight: {
+            type: import_genai.Type.STRING,
+            description: "An encouraging call-to-action confirming that landowners in our network support this type of lease."
+          }
+        },
+        required: [
+          "suitabilityScore",
+          "assessment",
+          "capacityEstimate",
+          "regulatoryBottlenecks",
+          "leasingRecommendations",
+          "matchingInsight"
+        ]
+      }
+    }
+  });
+  const resultText = response.text || "{}";
+  return JSON.parse(resultText);
+}
+app.post("/api/analyze-requirements", async (req, res) => {
+  try {
+    const assessment = await generateAiAssessment(req.body || {});
+    return res.json(assessment);
+  } catch (error) {
+    console.warn("AI analysis fallback used:", error);
+    return res.json({
+      suitabilityScore: 0,
+      assessment: "We\u2019re currently unable to generate a live AI zoning read. You can still proceed to submit your requirements and our team will follow up.",
+      capacityEstimate: "Pending review",
+      regulatoryBottlenecks: ["Local zoning review pending", "Permit requirements pending"],
+      leasingRecommendations: ["Submit your requirements for manual review", "Our team will advise on lease terms"],
+      matchingInsight: "Our land network is still ready to match your temporary lease request."
+    });
+  }
+});
 app.post("/api/leads", async (req, res) => {
   const leadData = req.body;
   console.log("Incoming lead:", req.body);
-  if (!leadData.fullName || !leadData.email || !leadData.phone || !leadData.landType || !leadData.intendedUse) {
+  if (!leadData?.fullName || !leadData?.email || !leadData?.phone || !leadData?.landType || !leadData?.intendedUse) {
     return res.status(400).json({ error: "Missing required contact or land requirements fields." });
   }
   try {
@@ -161,88 +274,39 @@ app.post("/api/leads", async (req, res) => {
     }
     console.log("Inserted lead:", data);
     const aiAssessment = {};
+    const adminMetaPayload = {
+      contactStatus: "new",
+      status: "new",
+      internalNotes: "",
+      assignee: "",
+      priority: "medium",
+      tags: [],
+      followUpDate: null,
+      reminderEnabled: false,
+      reminderSentAt: null,
+      activityHistory: [
+        {
+          id: `${data.id}-created`,
+          type: "system",
+          message: "Lead submitted through the intake form.",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      ]
+    };
     try {
-      const adminMetaPayload = {
-        contactStatus: "new",
-        status: "new",
-        internalNotes: ""
-      };
-      if (ai) {
-        const prompt = `
-Analyze the following temporary land lease requirements for feasibility, capacity estimates, regulatory considerations, and lease strategy.
-Requirements:
-- Type of Land: ${leadData.landType}
-- Intended Use: ${leadData.intendedUse}
-- Minimum Size Needed: ${leadData.minSize}
-- Budget Constraint: ${leadData.maxBudget || "Flexible"}
-- Lease Duration: ${leadData.leaseDuration || "Flexible"}
-- Preferred Location: State of ${leadData.preferredState || "Any State"}, Local Government of ${leadData.preferredLga || "Any LGA"}
-- Additional Requirements: ${leadData.additionalRequirements || "None specified"}
-
-Generate a detailed zoning, capacity, and leasing advisory report for this land seeker. You must output a JSON response matching the required schema.
-`;
-        const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: prompt,
-          config: {
-            systemInstruction: "You are a professional Land Consultant, Zoning Advisor, and Senior Real Estate Expert in temporary commercial, agricultural, and industrial land leasing. Generate realistic, data-driven, practical lease feasibility assessments.",
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: import_genai.Type.OBJECT,
-              properties: {
-                suitabilityScore: {
-                  type: import_genai.Type.INTEGER,
-                  description: "A feasibility score from 10 to 100 based on the viability of doing this temporarily."
-                },
-                assessment: {
-                  type: import_genai.Type.STRING,
-                  description: "A highly professional, authoritative assessment (2-3 sentences) of the lease viability."
-                },
-                capacityEstimate: {
-                  type: import_genai.Type.STRING,
-                  description: "Estimated capacity or layout potential for this specific size and use (e.g. storage volume, head of livestock, or layout staging)."
-                },
-                regulatoryBottlenecks: {
-                  type: import_genai.Type.ARRAY,
-                  items: { type: import_genai.Type.STRING },
-                  description: "3 key local regulations, zoning constraints, or permits they should watch out for."
-                },
-                leasingRecommendations: {
-                  type: import_genai.Type.ARRAY,
-                  items: { type: import_genai.Type.STRING },
-                  description: "3 high-value, professional recommendations for drafting a temporary lease for this use."
-                },
-                matchingInsight: {
-                  type: import_genai.Type.STRING,
-                  description: "An encouraging call-to-action confirming that landowners in our network support this type of lease."
-                }
-              },
-              required: [
-                "suitabilityScore",
-                "assessment",
-                "capacityEstimate",
-                "regulatoryBottlenecks",
-                "leasingRecommendations",
-                "matchingInsight"
-              ]
-            }
-          }
-        });
-        const resultText = response.text || "{}";
-        Object.assign(aiAssessment, JSON.parse(resultText));
-      }
-      try {
-        await supabase.from("leads").update({
-          ai_assessment: {
-            adminMeta: adminMetaPayload,
-            aiAssessment
-          }
-        }).eq("id", data.id);
-      } catch (metaError) {
-        console.warn("Admin metadata storage skipped:", metaError);
-      }
+      Object.assign(aiAssessment, await generateAiAssessment(leadData));
     } catch (assessmentError) {
       console.warn("AI assessment skipped, continuing with lead submission:", assessmentError);
+    }
+    try {
+      await supabase.from("leads").update({
+        ai_assessment: { ...aiAssessment, adminMeta: adminMetaPayload },
+        contact_status: "new",
+        status: "new",
+        internal_notes: ""
+      }).eq("id", data.id);
+    } catch (metaError) {
+      console.warn("Admin metadata storage skipped:", metaError);
     }
     return res.status(201).json({
       success: true,
@@ -268,11 +332,9 @@ app.post("/api/admin/login", (req, res) => {
 });
 app.get("/api/admin/leads", requireAdmin, async (req, res) => {
   try {
-    const { data, error } = await supabase.from("leads").select("*");
-    if (error) {
-      throw error;
-    }
-    const leads = (data || []).map(normalizeLeadRecord).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+    const { data, error } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
+    if (error) throw error;
+    const leads = (data || []).map(normalizeLeadRecord);
     return res.json({ leads });
   } catch (error) {
     console.error("Admin leads fetch error:", error);
@@ -310,11 +372,7 @@ app.patch("/api/admin/leads/:id", requireAdmin, async (req, res) => {
       }
     }
     const currentAdminMeta = getAdminMetaFromRow(mergedRow);
-    const nextAdminMeta = {
-      contactStatus: updates.contactStatus ?? currentAdminMeta.contactStatus,
-      status: updates.status ?? currentAdminMeta.status,
-      internalNotes: updates.internalNotes ?? currentAdminMeta.internalNotes
-    };
+    const nextAdminMeta = buildNextAdminMeta(currentAdminMeta, updates);
     try {
       const currentAiAssessment = mergedRow.ai_assessment ?? mergedRow.aiAssessment;
       let nextAiAssessment = {};
