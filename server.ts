@@ -187,6 +187,32 @@ if (process.env.GEMINI_API_KEY) {
   });
 }
 
+function getUserFriendlyErrorMessage(error: unknown, fallback = "Something went wrong. Please try again.") {
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    if (message.includes("network") || message.includes("fetch") || message.includes("timeout")) {
+      return "We couldn’t reach the service right now. Please try again in a moment.";
+    }
+
+    if (message.includes("unauthorized") || message.includes("credential") || message.includes("invalid")) {
+      return "The provided credentials were not accepted.";
+    }
+
+    if (message.includes("database") || message.includes("supabase") || message.includes("insert") || message.includes("update")) {
+      return "We couldn’t save your request right now. Please try again in a moment.";
+    }
+
+    return error.message;
+  }
+
+  return fallback;
+}
+
 async function generateAiAssessment(payload: Record<string, any>) {
   if (!ai) {
     return {};
@@ -278,10 +304,9 @@ app.post("/api/analyze-requirements", async (req, res) => {
 
 app.post("/api/leads", async (req, res) => {
   const leadData = req.body;
-  console.log("Incoming lead:", req.body);
 
   if (!leadData?.fullName || !leadData?.email || !leadData?.phone || !leadData?.landType || !leadData?.intendedUse) {
-    return res.status(400).json({ error: "Missing required contact or land requirements fields." });
+    return res.status(400).json({ error: "Please complete the required contact and land details before submitting." });
   }
 
   try {
@@ -309,11 +334,9 @@ app.post("/api/leads", async (req, res) => {
       console.error("Supabase Error:", error);
       return res.status(500).json({
         success: false,
-        error: error?.message ?? "Database insert failed.",
+        error: "We couldn’t save your request right now. Please try again in a moment.",
       });
     }
-
-    console.log("Inserted lead:", data);
 
     const aiAssessment: any = {};
     const adminMetaPayload = {
@@ -364,7 +387,7 @@ app.post("/api/leads", async (req, res) => {
     });
   } catch (error) {
     console.error("Lead endpoint error:", error);
-    return res.status(500).json({ error: "Failed to save lead or generate assessment." });
+    return res.status(500).json({ error: getUserFriendlyErrorMessage(error, "We couldn’t save your request right now. Please try again in a moment.") });
   }
 });
 
@@ -375,7 +398,7 @@ app.post("/api/admin/login", (req, res) => {
   const expectedPassword = process.env.ADMIN_PASSWORD || "fieldlease2026";
 
   if (username !== expectedUsername || password !== expectedPassword) {
-    return res.status(401).json({ error: "Invalid admin credentials" });
+    return res.status(401).json({ error: "The username or password you entered is incorrect." });
   }
 
   adminSessionToken = createAdminToken(username);
@@ -396,7 +419,7 @@ const leads = (data || []).map(normalizeLeadRecord);
 return res.json({ leads });
   } catch (error) {
     console.error("Admin leads fetch error:", error);
-    return res.status(500).json({ error: "Unable to load leads" });
+    return res.status(500).json({ error: getUserFriendlyErrorMessage(error, "We couldn’t load the lead list right now. Please refresh and try again.") });
   }
 });
 
@@ -461,7 +484,7 @@ app.patch("/api/admin/leads/:id", requireAdmin, async (req, res) => {
     return res.json({ lead: normalizeLeadRecord(mergedRow) });
   } catch (error) {
     console.error("Admin lead update error:", error);
-    return res.status(500).json({ error: "Unable to update lead" });
+    return res.status(500).json({ error: getUserFriendlyErrorMessage(error, "We couldn’t update this lead right now. Please try again.") });
   }
 });
 
@@ -473,18 +496,16 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
-    console.log("Vite dev middleware mounted.");
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
-    console.log("Production static files mounted from dist/.");
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running at http://0.0.0.0:${PORT} (Access via port 3000 only)`);
+    console.info(`Server starting on port ${PORT}`);
   });
 }
 

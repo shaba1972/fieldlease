@@ -76,6 +76,7 @@ export default function AdminDashboard() {
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem("fieldlease_admin_user"));
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [leads, setLeads] = useState<AdminLead[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -96,12 +97,14 @@ export default function AdminDashboard() {
 
     try {
       setLoading(true);
+      setFeedbackMessage(null);
       const response = await fetch("/api/admin/leads", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
-        throw new Error("Unable to load leads");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "We couldn’t load the lead list right now. Please refresh and try again.");
       }
 
       const data = await response.json();
@@ -110,7 +113,8 @@ export default function AdminDashboard() {
         setSelectedLeadId((current) => current || data.leads[0].id);
       }
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : "Unable to load leads");
+      const message = error instanceof Error ? error.message : "We couldn’t load the lead list right now. Please refresh and try again.";
+      setFeedbackMessage(message);
     } finally {
       setLoading(false);
     }
@@ -188,6 +192,7 @@ export default function AdminDashboard() {
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoginError("");
+    setFeedbackMessage(null);
     setLoading(true);
 
     try {
@@ -206,15 +211,17 @@ export default function AdminDashboard() {
       localStorage.setItem("fieldlease_admin_user", data.username);
       setToken(data.token);
       setUsername(data.username);
+      setFeedbackMessage("Signed in successfully.");
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : "Login failed");
+      const message = error instanceof Error ? error.message : "The username or password you entered is incorrect.";
+      setLoginError(message);
     } finally {
       setLoading(false);
     }
   };
 
   const updateLead = async (leadId: string, patch: Partial<AdminLead>) => {
-    if (!token) return;
+    if (!token) return false;
 
     setSaving(true);
     try {
@@ -229,12 +236,15 @@ export default function AdminDashboard() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Update failed");
+        throw new Error(data.error || "We couldn’t update this lead right now. Please try again.");
       }
 
       setLeads((current) => current.map((lead) => (lead.id === leadId ? data.lead : lead)));
+      return true;
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : "Update failed");
+      const message = error instanceof Error ? error.message : "We couldn’t update this lead right now. Please try again.";
+      setFeedbackMessage(message);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -249,7 +259,7 @@ export default function AdminDashboard() {
 
   const handleSaveWorkflow = async () => {
     if (!selectedLead) return;
-    await updateLead(selectedLead.id, {
+    const saved = await updateLead(selectedLead.id, {
       internalNotes: noteDraft,
       assignee: assigneeDraft,
       priority: priorityDraft,
@@ -257,26 +267,38 @@ export default function AdminDashboard() {
       followUpDate: followUpDateDraft || null,
       reminderEnabled: reminderEnabledDraft,
     });
+
+    if (saved) {
+      setFeedbackMessage("Workflow details saved successfully.");
+    }
   };
 
   const handleAddActivity = async () => {
     if (!selectedLead || !activityMessageDraft.trim()) return;
 
     const entry = createActivityEntry(activityTypeDraft, activityMessageDraft.trim());
-    await updateLead(selectedLead.id, {
+    const saved = await updateLead(selectedLead.id, {
       activityHistory: [entry, ...(selectedLead.activityHistory || [])],
     });
-    setActivityMessageDraft("");
+
+    if (saved) {
+      setFeedbackMessage("Activity added to the lead history.");
+      setActivityMessageDraft("");
+    }
   };
 
   const handleStatusChange = async (nextStatus: ContactStatus) => {
     if (!selectedLead) return;
 
     const entry = createActivityEntry("status-change", `Contact status changed to ${nextStatus}`);
-    await updateLead(selectedLead.id, {
+    const saved = await updateLead(selectedLead.id, {
       contactStatus: nextStatus,
       activityHistory: [entry, ...(selectedLead.activityHistory || [])],
     });
+
+    if (saved) {
+      setFeedbackMessage("Lead status updated.");
+    }
   };
 
   const handleReminder = async () => {
@@ -295,9 +317,13 @@ export default function AdminDashboard() {
       window.alert(`Reminder queued for ${selectedLead.fullName}`);
     }
 
-    await updateLead(selectedLead.id, {
+    const saved = await updateLead(selectedLead.id, {
       reminderSentAt: new Date().toISOString(),
     });
+
+    if (saved) {
+      setFeedbackMessage("Reminder recorded for the selected lead.");
+    }
   };
 
   const handleLogout = () => {
@@ -307,6 +333,7 @@ export default function AdminDashboard() {
     setUsername(null);
     setLeads([]);
     setSelectedLeadId(null);
+    setFeedbackMessage(null);
   };
 
   const exportCsv = () => {
@@ -406,9 +433,6 @@ export default function AdminDashboard() {
             </button>
           </form>
 
-          <p className="mt-4 text-center text-xs text-slate-400">
-            Default login is admin / fieldlease2026 unless you override it in environment variables.
-          </p>
         </div>
       </div>
     );
@@ -439,6 +463,12 @@ export default function AdminDashboard() {
             </button>
           </div>
         </header>
+
+        {feedbackMessage ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            {feedbackMessage}
+          </div>
+        ) : null}
 
         <section className="grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
