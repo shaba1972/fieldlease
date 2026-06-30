@@ -260,7 +260,6 @@ app.post("/api/analyze-requirements", async (req, res) => {
     });
   }
 });
-
 app.post("/api/leads", async (req, res) => {
   const leadData = req.body;
   if (!leadData?.fullName || !leadData?.email || !leadData?.phone || !leadData?.landType || !leadData?.intendedUse) {
