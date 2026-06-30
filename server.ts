@@ -11,7 +11,9 @@ const app = express();
 
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+
+type PipelineStatus = "new" | "contacted" | "searching" | "matched" | "closed";
 
 interface AdminLeadRecord {
   id: string;
@@ -29,7 +31,7 @@ interface AdminLeadRecord {
   leaseDuration: string;
   additionalRequirements: string;
   submittedAt: string;
-  contactStatus: "new" | "contacted" | "matched" | "not-interested";
+  contactStatus: PipelineStatus;
   status: "new" | "follow-up" | "qualified" | "closed";
   internalNotes: string;
   assignee: string;
@@ -45,9 +47,40 @@ interface AdminLeadRecord {
     createdAt: string;
     actor?: string;
   }>;
+  documents: Array<{
+    id: string;
+    name: string;
+    type: string;
+    size: number;
+    uploadedAt: string;
+    uploadedBy?: string;
+    dataUrl?: string;
+  }>;
+  notificationHistory: Array<{
+    id: string;
+    channel: "email" | "whatsapp";
+    recipient: string;
+    subject?: string;
+    message: string;
+    status: string;
+    sentAt: string;
+    actor?: string;
+  }>;
 }
 
 let adminSessionToken: string | null = null;
+
+function normalizePipelineStatus(value: unknown): PipelineStatus {
+  if (value === "contacted" || value === "searching" || value === "matched" || value === "closed") {
+    return value;
+  }
+
+  if (value === "not-interested" || value === "qualified" || value === "follow-up") {
+    return "closed";
+  }
+
+  return "new";
+}
 
 function getAdminMetaFromRow(row: Record<string, any>) {
   const aiAssessmentValue = row.ai_assessment ?? row.aiAssessment;
@@ -66,9 +99,11 @@ function getAdminMetaFromRow(row: Record<string, any>) {
 
   const tags = Array.isArray(nestedAdminMeta.tags) ? nestedAdminMeta.tags : [];
   const activityHistory = Array.isArray(nestedAdminMeta.activityHistory) ? nestedAdminMeta.activityHistory : [];
+  const documents = Array.isArray(nestedAdminMeta.documents) ? nestedAdminMeta.documents : [];
+  const notificationHistory = Array.isArray(nestedAdminMeta.notificationHistory) ? nestedAdminMeta.notificationHistory : [];
 
   return {
-    contactStatus: (row.contact_status ?? row.contactStatus ?? nestedAdminMeta.contactStatus ?? nestedAdminMeta.contact_status ?? "new") as AdminLeadRecord["contactStatus"],
+    contactStatus: normalizePipelineStatus(row.contact_status ?? row.contactStatus ?? nestedAdminMeta.contactStatus ?? nestedAdminMeta.contact_status ?? "new"),
     status: (row.status ?? nestedAdminMeta.status ?? "new") as AdminLeadRecord["status"],
     internalNotes: (row.internal_notes ?? row.internalNotes ?? nestedAdminMeta.internalNotes ?? nestedAdminMeta.internal_notes ?? "") as string,
     assignee: (nestedAdminMeta.assignee ?? "") as string,
@@ -78,6 +113,8 @@ function getAdminMetaFromRow(row: Record<string, any>) {
     reminderEnabled: Boolean(nestedAdminMeta.reminderEnabled ?? nestedAdminMeta.reminder_enabled ?? false),
     reminderSentAt: (nestedAdminMeta.reminderSentAt ?? nestedAdminMeta.reminder_sent_at ?? null) as string | null,
     activityHistory: activityHistory as AdminLeadRecord["activityHistory"],
+    documents: documents as AdminLeadRecord["documents"],
+    notificationHistory: notificationHistory as AdminLeadRecord["notificationHistory"],
   };
 }
 
@@ -117,12 +154,14 @@ function normalizeLeadRecord(row: Record<string, any>): AdminLeadRecord {
     reminderEnabled: adminMeta.reminderEnabled,
     reminderSentAt: adminMeta.reminderSentAt,
     activityHistory: adminMeta.activityHistory,
+    documents: adminMeta.documents,
+    notificationHistory: adminMeta.notificationHistory,
   };
 }
 
 function buildNextAdminMeta(currentAdminMeta: Record<string, any>, updates: Record<string, any>) {
   return {
-    contactStatus: updates.contactStatus ?? currentAdminMeta.contactStatus ?? "new",
+    contactStatus: normalizePipelineStatus(updates.contactStatus ?? currentAdminMeta.contactStatus ?? "new"),
     status: updates.status ?? currentAdminMeta.status ?? "new",
     internalNotes: updates.internalNotes ?? currentAdminMeta.internalNotes ?? "",
     assignee: updates.assignee ?? currentAdminMeta.assignee ?? "",
@@ -132,6 +171,8 @@ function buildNextAdminMeta(currentAdminMeta: Record<string, any>, updates: Reco
     reminderEnabled: updates.reminderEnabled ?? currentAdminMeta.reminderEnabled ?? false,
     reminderSentAt: updates.reminderSentAt ?? currentAdminMeta.reminderSentAt ?? null,
     activityHistory: Array.isArray(updates.activityHistory) ? updates.activityHistory : (Array.isArray(currentAdminMeta.activityHistory) ? currentAdminMeta.activityHistory : []),
+    documents: Array.isArray(updates.documents) ? updates.documents : (Array.isArray(currentAdminMeta.documents) ? currentAdminMeta.documents : []),
+    notificationHistory: Array.isArray(updates.notificationHistory) ? updates.notificationHistory : (Array.isArray(currentAdminMeta.notificationHistory) ? currentAdminMeta.notificationHistory : []),
   };
 }
 
@@ -358,6 +399,8 @@ app.post("/api/leads", async (req, res) => {
           createdAt: new Date().toISOString(),
         },
       ],
+      documents: [],
+      notificationHistory: [],
     };
 
     try {

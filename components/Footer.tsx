@@ -59,6 +59,16 @@ export default function Footer() {
                   Platform FAQ
                 </a>
               </li>
+              <li>
+                <a
+                  href="https://fieldlease-investor-portal-13088513289.europe-west2.run.app"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-emerald-500 transition-colors"
+                >
+                  Investor Portal
+                </a>
+              </li>
             </ul>
           </div>
 

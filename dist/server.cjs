@@ -39,8 +39,17 @@ var import_dotenv2 = __toESM(require("dotenv"), 1);
 import_dotenv2.default.config();
 var app = (0, import_express.default)();
 var PORT = Number(process.env.PORT) || 3e3;
-app.use(import_express.default.json());
+app.use(import_express.default.json({ limit: "10mb" }));
 var adminSessionToken = null;
+function normalizePipelineStatus(value) {
+  if (value === "contacted" || value === "searching" || value === "matched" || value === "closed") {
+    return value;
+  }
+  if (value === "not-interested" || value === "qualified" || value === "follow-up") {
+    return "closed";
+  }
+  return "new";
+}
 function getAdminMetaFromRow(row) {
   const aiAssessmentValue = row.ai_assessment ?? row.aiAssessment;
   let nestedAdminMeta = {};
@@ -56,8 +65,10 @@ function getAdminMetaFromRow(row) {
   }
   const tags = Array.isArray(nestedAdminMeta.tags) ? nestedAdminMeta.tags : [];
   const activityHistory = Array.isArray(nestedAdminMeta.activityHistory) ? nestedAdminMeta.activityHistory : [];
+  const documents = Array.isArray(nestedAdminMeta.documents) ? nestedAdminMeta.documents : [];
+  const notificationHistory = Array.isArray(nestedAdminMeta.notificationHistory) ? nestedAdminMeta.notificationHistory : [];
   return {
-    contactStatus: row.contact_status ?? row.contactStatus ?? nestedAdminMeta.contactStatus ?? nestedAdminMeta.contact_status ?? "new",
+    contactStatus: normalizePipelineStatus(row.contact_status ?? row.contactStatus ?? nestedAdminMeta.contactStatus ?? nestedAdminMeta.contact_status ?? "new"),
     status: row.status ?? nestedAdminMeta.status ?? "new",
     internalNotes: row.internal_notes ?? row.internalNotes ?? nestedAdminMeta.internalNotes ?? nestedAdminMeta.internal_notes ?? "",
     assignee: nestedAdminMeta.assignee ?? "",
@@ -66,7 +77,9 @@ function getAdminMetaFromRow(row) {
     followUpDate: nestedAdminMeta.followUpDate ?? nestedAdminMeta.follow_up_date ?? null,
     reminderEnabled: Boolean(nestedAdminMeta.reminderEnabled ?? nestedAdminMeta.reminder_enabled ?? false),
     reminderSentAt: nestedAdminMeta.reminderSentAt ?? nestedAdminMeta.reminder_sent_at ?? null,
-    activityHistory
+    activityHistory,
+    documents,
+    notificationHistory
   };
 }
 function normalizeLeadRecord(row) {
@@ -97,12 +110,14 @@ function normalizeLeadRecord(row) {
     followUpDate: adminMeta.followUpDate,
     reminderEnabled: adminMeta.reminderEnabled,
     reminderSentAt: adminMeta.reminderSentAt,
-    activityHistory: adminMeta.activityHistory
+    activityHistory: adminMeta.activityHistory,
+    documents: adminMeta.documents,
+    notificationHistory: adminMeta.notificationHistory
   };
 }
 function buildNextAdminMeta(currentAdminMeta, updates) {
   return {
-    contactStatus: updates.contactStatus ?? currentAdminMeta.contactStatus ?? "new",
+    contactStatus: normalizePipelineStatus(updates.contactStatus ?? currentAdminMeta.contactStatus ?? "new"),
     status: updates.status ?? currentAdminMeta.status ?? "new",
     internalNotes: updates.internalNotes ?? currentAdminMeta.internalNotes ?? "",
     assignee: updates.assignee ?? currentAdminMeta.assignee ?? "",
@@ -111,7 +126,9 @@ function buildNextAdminMeta(currentAdminMeta, updates) {
     followUpDate: updates.followUpDate ?? currentAdminMeta.followUpDate ?? null,
     reminderEnabled: updates.reminderEnabled ?? currentAdminMeta.reminderEnabled ?? false,
     reminderSentAt: updates.reminderSentAt ?? currentAdminMeta.reminderSentAt ?? null,
-    activityHistory: Array.isArray(updates.activityHistory) ? updates.activityHistory : Array.isArray(currentAdminMeta.activityHistory) ? currentAdminMeta.activityHistory : []
+    activityHistory: Array.isArray(updates.activityHistory) ? updates.activityHistory : Array.isArray(currentAdminMeta.activityHistory) ? currentAdminMeta.activityHistory : [],
+    documents: Array.isArray(updates.documents) ? updates.documents : Array.isArray(currentAdminMeta.documents) ? currentAdminMeta.documents : [],
+    notificationHistory: Array.isArray(updates.notificationHistory) ? updates.notificationHistory : Array.isArray(currentAdminMeta.notificationHistory) ? currentAdminMeta.notificationHistory : []
   };
 }
 function mapLeadUpdateToSupabase(updates) {
@@ -306,7 +323,9 @@ app.post("/api/leads", async (req, res) => {
           message: "Lead submitted through the intake form.",
           createdAt: (/* @__PURE__ */ new Date()).toISOString()
         }
-      ]
+      ],
+      documents: [],
+      notificationHistory: []
     };
     try {
       Object.assign(aiAssessment, await generateAiAssessment(leadData));
