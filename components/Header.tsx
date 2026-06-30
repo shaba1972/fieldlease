@@ -72,6 +72,7 @@ export default function Header({ onCtaClick }: HeaderProps) {
               <Phone className="w-4 h-4 text-emerald-600" />
               <span>+234 815 222 8251</span>
             </a>
+            
             <a
               href="/admin"
               className="px-4 py-2.5 rounded-xl border border-emerald-200 text-emerald-700 font-semibold text-sm transition-all duration-200 hover:bg-emerald-50"
@@ -150,6 +151,7 @@ export default function Header({ onCtaClick }: HeaderProps) {
               <Phone className="w-4 h-4 text-emerald-600" />
               <span>Call Advising: +234 815 222 8251</span>
             </a>
+            
             <a
               href="/admin"
               onClick={() => setIsMobileMenuOpen(false)}
