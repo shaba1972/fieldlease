@@ -104,7 +104,7 @@ export default function App() {
                   <div>
                     <span className="font-sans font-bold text-xs text-slate-900 block">Total Escrow Protection</span>
                     <span className="text-[11px] text-slate-500 block mt-0.5 leading-relaxed">
-                      All temporary leasing fees and security deposits remain safely in AcreLease escrow until contracts are finalized and you successfully occupy the land parcel.
+                      All temporary leasing fees and security deposits remain safely in FieldLease escrow until contracts are finalized and you successfully occupy the land parcel.
                     </span>
                   </div>
                 </div>
@@ -113,7 +113,7 @@ export default function App() {
               {/* Verified Badge */}
               <div className="pt-4 flex items-center gap-2 text-xs text-slate-400 font-medium">
                 <ShieldCheck className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
-                <span>AcreLease Standardized Lease Legal Coverage</span>
+                <span>FieldLease Standardized Lease Legal Coverage</span>
               </div>
             </div>
 

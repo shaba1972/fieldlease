@@ -924,7 +924,7 @@ export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProp
               </li>
               <li className="flex gap-2">
                 <span className="font-extrabold text-emerald-700">2.</span>
-                <span>Within <span className="font-bold">2 hours</span>, an AcreLease representative will call or WhatsApp you to present 3 pre-vetted landowner files.</span>
+                <span>Within <span className="font-bold">2 hours</span>, a FieldLease representative will call or WhatsApp you to present 3 pre-vetted landowner files.</span>
               </li>
               <li className="flex gap-2">
                 <span className="font-extrabold text-emerald-700">3.</span>
@@ -935,7 +935,7 @@ export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProp
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-sm mx-auto">
             <a
-              href={`https://wa.me/2348152228251?text=Hi%2C%20I%20just%20submitted%20my%20temporary%20land%20lease%20requirements%20on%20AcreLease%20(ID%3A%20${leadId}).%20Can%20I%20get%20updates%3F`}
+              href={`https://wa.me/2348152228251?text=Hi%2C%20I%20just%20submitted%20my%20temporary%20land%20lease%20requirements%20on%20FieldLease%20(ID%3A%20${leadId}).%20Can%20I%20get%20updates%3F`}
               target="_blank"
               rel="noreferrer"
               className="px-6 py-3.5 rounded-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md hover:scale-[1.01] active:scale-95 transition-all"

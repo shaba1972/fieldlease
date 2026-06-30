@@ -39,7 +39,7 @@ export default function Header({ onCtaClick }: HeaderProps) {
             </div>
             <div>
               <span className="font-sans font-bold text-lg text-slate-900 tracking-tight block leading-none">
-                AcreLease
+                FieldLease
               </span>
               <span className="font-mono text-[9px] text-emerald-600 font-medium tracking-wider uppercase block mt-1">
                 Temporary Land Hub

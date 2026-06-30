@@ -33,7 +33,7 @@ export default function SocialProof() {
               Success Stories Across the Field
             </h2>
             <p className="text-slate-500 text-sm mt-3 leading-relaxed">
-              Read how leading agribusinesses, renewable trial networks, and staging logistics coordinators use AcreLease to secure temporary easements and parcels.
+              Read how leading agribusinesses, renewable trial networks, and staging logistics coordinators use FieldLease to secure temporary easements and parcels.
             </p>
           </div>
 

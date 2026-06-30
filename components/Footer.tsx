@@ -18,7 +18,7 @@ export default function Footer() {
               </div>
               <div>
                 <span className="font-sans font-bold text-base text-white tracking-tight block leading-none">
-                  AcreLease
+                  FieldLease
                 </span>
                 <span className="font-mono text-[9px] text-emerald-500 font-medium tracking-wider uppercase block mt-1">
                   Temporary Land Hub
@@ -26,10 +26,10 @@ export default function Footer() {
               </div>
             </div>
             <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
-              AcreLease is a premium PropTech platform connecting crop farmers, industrial logistics, construction staging coordinators, and event organizers with verified landowner acreage available for short- and long-term temporary lease.
+              FieldLease is a premium PropTech platform connecting crop farmers, industrial logistics, construction staging coordinators, and event organizers with verified landowner acreage available for short- and long-term temporary lease.
             </p>
             <div className="text-[10px] text-slate-500 max-w-sm leading-relaxed">
-              Disclaimer: AcreLease does not own, hold, buy, or sell physical real estate. All matches represent privately held properties listed by verified registered third-party landowners.
+              Disclaimer: FieldLease does not own, hold, buy, or sell physical real estate. All matches represent privately held properties listed by verified registered third-party landowners.
             </div>
           </div>
 
@@ -70,8 +70,8 @@ export default function Footer() {
             <ul className="space-y-3 text-xs">
               <li className="flex gap-2.5 items-center">
                 <Mail className="w-4.5 h-4.5 text-emerald-500 shrink-0" />
-                <a href="mailto:sourcing@acrelease.com" className="hover:text-emerald-500 transition-colors">
-                  sourcing@acrelease.com
+                <a href="mailto:sourcing@fieldlease.com" className="hover:text-emerald-500 transition-colors">
+                  sourcing@fieldlease.com
                 </a>
               </li>
               <li className="flex gap-2.5 items-center">
@@ -100,7 +100,7 @@ export default function Footer() {
         {/* Bottom Bar */}
         <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-6 text-[10px] text-slate-500" id="footer-bottom">
           <div>
-            © {currentYear} AcreLease Inc. All rights reserved. Made for temporary lease optimization.
+            © {currentYear} FieldLease Inc. All rights reserved. Made for temporary lease optimization.
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
             <a href="#privacy" className="hover:text-slate-300 transition-colors flex items-center gap-1">
