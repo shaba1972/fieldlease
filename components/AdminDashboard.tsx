@@ -207,8 +207,8 @@ export default function AdminDashboard() {
         throw new Error(data.error || "Login failed");
       }
 
-      localStorage.setItem("fieldlease_admin_token", data.token);
-      localStorage.setItem("fieldlease_admin_user", data.username);
+      localStorage.setItem("Acrelease_admin_token", data.token);
+      localStorage.setItem("Acrelease_admin_user", data.username);
       setToken(data.token);
       setUsername(data.username);
       setFeedbackMessage("Signed in successfully.");
@@ -327,8 +327,8 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("fieldlease_admin_token");
-    localStorage.removeItem("fieldlease_admin_user");
+    localStorage.removeItem("Acrelease_admin_token");
+    localStorage.removeItem("Acrelease_admin_user");
     setToken(null);
     setUsername(null);
     setLeads([]);
@@ -384,7 +384,7 @@ export default function AdminDashboard() {
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "fieldlease-leads.csv";
+    link.download = "Acrelease-leads.csv";
     link.click();
     URL.revokeObjectURL(link.href);
   };
