@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { LeadFormData, AIAssessmentResult } from "../types";
 import { LAND_TYPES, INTENDED_USES, STATES_AND_REGIONS } from "../data";
 import AIAssessmentCard from "./AIAssessmentCard";
+import Turnstile from "react-turnstile";
 import {
   Sparkles,
   MapPin,
