@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -10,10 +11,39 @@ dotenv.config();
 const app = express();
 
 const PORT = Number(process.env.PORT) || 3000;
+const TURNSTILE_SITE_KEY =
+  process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY ||
+  (process.env.NODE_ENV !== "production" ? "1x00000000000000000000AA" : "");
+const TURNSTILE_SECRET_KEY =
+  process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ||
+  (process.env.NODE_ENV !== "production" ? "1x0000000000000000000000000000000AA" : "");
+const TURNSTILE_ACTION = "lead_capture";
 
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "10mb" }));
 
+const leadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many submissions. Please try again later.",
+  },
+});
+
+app.use("/api/leads", leadLimiter);
+
 type PipelineStatus = "new" | "contacted" | "searching" | "matched" | "closed";
+
+interface TurnstileVerificationResponse {
+  success: boolean;
+  "error-codes"?: string[];
+  challenge_ts?: string;
+  hostname?: string;
+  action?: string;
+  cdata?: string;
+}
 
 interface AdminLeadRecord {
   id: string;
@@ -215,6 +245,70 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
+async function verifyTurnstileToken(token: string, remoteIp?: string) {
+  if (!TURNSTILE_SECRET_KEY) {
+    return {
+      success: false,
+      error: "Spam protection is not configured. Please contact support.",
+    };
+  }
+
+  if (!token) {
+    return {
+      success: false,
+      error: "Please complete the spam protection check before submitting.",
+    };
+  }
+
+  try {
+    const body = new URLSearchParams({
+      secret: TURNSTILE_SECRET_KEY,
+      response: token,
+    });
+
+    if (remoteIp) {
+      body.set("remoteip", remoteIp);
+    }
+
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Turnstile verification returned ${response.status}`);
+    }
+
+    const result = (await response.json()) as TurnstileVerificationResponse;
+    if (!result.success) {
+      console.warn("Turnstile verification failed:", result["error-codes"] || []);
+      return {
+        success: false,
+        error: "Spam protection verification failed. Please refresh and try again.",
+      };
+    }
+
+    if (process.env.NODE_ENV === "production" && result.action !== TURNSTILE_ACTION) {
+      console.warn("Turnstile action mismatch:", result.action);
+      return {
+        success: false,
+        error: "Spam protection verification failed. Please refresh and try again.",
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.warn("Turnstile verification error:", error);
+    return {
+      success: false,
+      error: "Spam protection is temporarily unavailable. Please try again in a moment.",
+    };
+  }
+}
+
 // Gemini client initialization (with safety fallback for missing key)
 let ai: GoogleGenAI | null = null;
 if (process.env.GEMINI_API_KEY) {
@@ -343,9 +437,21 @@ app.post("/api/analyze-requirements", async (req, res) => {
   }
 });
 
+app.get("/api/security/turnstile-site-key", (_req, res) => {
+  if (!TURNSTILE_SITE_KEY) {
+    return res.status(503).json({ error: "Spam protection is not configured." });
+  }
+
+  return res.json({ siteKey: TURNSTILE_SITE_KEY });
+});
 
 app.post("/api/leads", async (req, res) => {
   const leadData = req.body;
+
+  const turnstileResult = await verifyTurnstileToken(String(leadData?.turnstileToken || ""), req.ip);
+  if (!turnstileResult.success) {
+    return res.status(403).json({ error: turnstileResult.error });
+  }
 
   if (!leadData?.fullName || !leadData?.email || !leadData?.phone || !leadData?.landType || !leadData?.intendedUse) {
     return res.status(400).json({ error: "Please complete the required contact and land details before submitting." });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { LeadFormData, AIAssessmentResult } from "../types";
 import { LAND_TYPES, INTENDED_USES, STATES_AND_REGIONS } from "../data";
 import AIAssessmentCard from "./AIAssessmentCard";
@@ -30,10 +30,32 @@ interface LeadCaptureFormProps {
   onSuccessSubmit?: (leadId: string) => void;
 }
 
+interface TurnstileRenderOptions {
+  sitekey: string;
+  action?: string;
+  callback?: (token: string) => void;
+  "expired-callback"?: () => void;
+  "error-callback"?: () => void;
+  size?: "normal" | "compact" | "flexible";
+  theme?: "light" | "dark" | "auto";
+}
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: TurnstileRenderOptions) => string;
+      reset: (widgetId?: string) => void;
+      remove: (widgetId?: string) => void;
+    };
+  }
+}
+
 const SIZES_PILLS = ["1-2 Acres", "5-10 Acres", "25-50 Acres", "100+ Acres", "10,000 sqft"];
 const DURATIONS_PILLS = ["6 Months", "1 Year", "2-3 Years", "5+ Years", "Flexible Term"];
 const BUDGETS_PILLS = ["Under $5k/yr", "$10k-$25k/yr", "$50k+/yr", "Flexible budget"];
 const INFRASTRUCTURE_TAGS = ["Water Source", "Grid Power Connection", "Fenced Enclosure", "Heavy Truck Access", "High road proximity"];
+const TURNSTILE_SCRIPT_ID = "fieldlease-turnstile-script";
+const TURNSTILE_ACTION = "lead_capture";
 
 export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProps) {
   const [formData, setFormData] = useState<LeadFormData>({
@@ -60,6 +82,112 @@ export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProp
   const [leadId, setLeadId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileStatus, setTurnstileStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+
+  const resetTurnstile = () => {
+    setTurnstileToken("");
+    if (turnstileWidgetIdRef.current && window.turnstile) {
+      window.turnstile.reset(turnstileWidgetIdRef.current);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSiteKey = async () => {
+      try {
+        const response = await fetch("/api/security/turnstile-site-key");
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.siteKey) {
+          throw new Error(data.error || "Turnstile site key unavailable");
+        }
+
+        if (active) {
+          setTurnstileSiteKey(data.siteKey);
+          setTurnstileStatus("ready");
+        }
+      } catch (loadError) {
+        console.error(loadError);
+        if (active) {
+          setTurnstileStatus("unavailable");
+          setError("Spam protection could not load. Please refresh before submitting.");
+        }
+      }
+    };
+
+    void loadSiteKey();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (turnstileStatus !== "ready" || !turnstileSiteKey || currentStep !== 4 || isSubmitted) return;
+
+    let canceled = false;
+    let scriptElement: HTMLScriptElement | null = document.getElementById(TURNSTILE_SCRIPT_ID) as HTMLScriptElement | null;
+
+    const renderTurnstile = () => {
+      if (canceled || !window.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) return;
+
+      turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
+        sitekey: turnstileSiteKey,
+        action: TURNSTILE_ACTION,
+        size: "flexible",
+        theme: "light",
+        callback: (token) => {
+          setTurnstileToken(token);
+          setError(null);
+          setValidationError(null);
+        },
+        "expired-callback": () => {
+          setTurnstileToken("");
+          setValidationError("Please complete the spam protection check again.");
+        },
+        "error-callback": () => {
+          setTurnstileToken("");
+          setTurnstileStatus("unavailable");
+          setError("Spam protection could not load. Please refresh before submitting.");
+        },
+      });
+    };
+
+    if (window.turnstile) {
+      renderTurnstile();
+    } else if (scriptElement) {
+      scriptElement.addEventListener("load", renderTurnstile);
+    } else {
+      scriptElement = document.createElement("script");
+      scriptElement.id = TURNSTILE_SCRIPT_ID;
+      scriptElement.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      scriptElement.async = true;
+      scriptElement.defer = true;
+      scriptElement.addEventListener("load", renderTurnstile);
+      scriptElement.addEventListener("error", () => {
+        if (!canceled) {
+          setTurnstileStatus("unavailable");
+          setError("Spam protection could not load. Please refresh before submitting.");
+        }
+      });
+      document.head.appendChild(scriptElement);
+    }
+
+    return () => {
+      canceled = true;
+      scriptElement?.removeEventListener("load", renderTurnstile);
+      if (turnstileWidgetIdRef.current && window.turnstile) {
+        window.turnstile.remove(turnstileWidgetIdRef.current);
+        turnstileWidgetIdRef.current = null;
+        setTurnstileToken("");
+      }
+    };
+  }, [currentStep, isSubmitted, turnstileSiteKey, turnstileStatus]);
 
   // Handle Input Changes
   const handleInputChange = (
@@ -229,6 +357,14 @@ export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProp
     e.preventDefault();
 
     if (!validateStep(4)) return;
+    if (turnstileStatus !== "ready") {
+      setError("Spam protection is not ready. Please refresh and try again.");
+      return;
+    }
+    if (!turnstileToken) {
+      setValidationError("Please complete the spam protection check before submitting.");
+      return;
+    }
 
     setIsSubmitting(true);
     setError(null);
@@ -237,11 +373,12 @@ export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProp
       const response = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, turnstileToken }),
       });
 
       if (!response.ok) {
-        throw new Error("Submission failed.");
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Submission failed.");
       }
 
       const data = await response.json();
@@ -251,7 +388,9 @@ export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProp
         onSuccessSubmit(data.leadId);
       }
     } catch (err) {
-      setError("Failed to submit land lease requirements. Please check your connection and try again.");
+      resetTurnstile();
+      const message = err instanceof Error ? err.message : "Failed to submit land lease requirements. Please check your connection and try again.";
+      setError(message);
       console.error(err);
     } finally {
       setIsSubmitting(false);
@@ -863,6 +1002,46 @@ export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProp
                 />
               </div>
 
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        Spam Protection
+                      </span>
+                      <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
+                        Cloudflare Turnstile verifies this request before it reaches our sourcing team.
+                      </p>
+                    </div>
+                  </div>
+                  {turnstileToken && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-[10px] font-bold text-emerald-800 uppercase tracking-wider shrink-0">
+                      <CheckCircle className="w-3 h-3" />
+                      Verified
+                    </span>
+                  )}
+                </div>
+
+                <div className="min-h-[74px] rounded-lg border border-slate-100 bg-white flex items-center justify-center overflow-x-auto px-2 py-1">
+                  {turnstileStatus === "loading" && (
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                      <span>Loading spam protection...</span>
+                    </div>
+                  )}
+                  {turnstileStatus === "unavailable" && (
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-rose-700">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Spam protection could not load. Refresh before submitting.</span>
+                    </div>
+                  )}
+                  {turnstileStatus === "ready" && (
+                    <div ref={turnstileContainerRef} className="w-full min-w-[300px] flex justify-center" />
+                  )}
+                </div>
+              </div>
+
               {/* Secure guarantee text */}
               <p className="text-[10px] text-center text-slate-400 leading-normal px-2">
                 🔒 <strong>100% Confidential Guarantee</strong>. Your information is protected by escrow-standard security rules and will only be shared with verified matches landowners. No spam, ever.
@@ -880,13 +1059,18 @@ export default function LeadCaptureForm({ onSuccessSubmit }: LeadCaptureFormProp
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="px-8 py-3.5 rounded-full bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-950/20 disabled:opacity-80 transition-all active:scale-[0.98]"
+                  disabled={isSubmitting || turnstileStatus !== "ready" || !turnstileToken}
+                  className="px-8 py-3.5 rounded-full bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-950/20 disabled:opacity-80 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
                 >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span>Sourcing...</span>
+                    </>
+                  ) : turnstileStatus === "ready" && !turnstileToken ? (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Complete Check</span>
                     </>
                   ) : (
                     <>
