@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Compass, Menu, X, Phone, MessageSquare } from "lucide-react";
+import { Menu, X, Phone, MessageSquare } from "lucide-react";
+import fieldleaseMark from "../assets/images/fieldlease-mark.png";
 
 interface HeaderProps {
   onCtaClick: () => void;
@@ -34,8 +35,13 @@ export default function Header({ onCtaClick }: HeaderProps) {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-2" id="header-logo">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-600/20">
-              <Compass className="w-5.5 h-5.5" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-900/10 flex items-center justify-center shadow-md shadow-emerald-900/10 overflow-hidden">
+              <img
+                src={fieldleaseMark}
+                alt=""
+                aria-hidden="true"
+                className="w-8 h-8 object-contain"
+              />
             </div>
             <div>
               <span className="font-sans font-bold text-lg text-slate-900 tracking-tight block leading-none">
