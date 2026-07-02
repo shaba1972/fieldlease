@@ -51,9 +51,9 @@ declare global {
   }
 }
 
-const SIZES_PILLS = ["1-2 Acres", "5-10 Acres", "25-50 Acres", "100+ Acres", "10,000 sqft"];
+const SIZES_PILLS = ["1-10 plot", "1-2 Acres", "5-10 Acres", "25-50 Acres", "100+ Acres", "10,000 sqft"];
 const DURATIONS_PILLS = ["6 Months", "1 Year", "2-3 Years", "5+ Years", "Flexible Term"];
-const BUDGETS_PILLS = ["Under $5k/yr", "$10k-$25k/yr", "$50k+/yr", "Flexible budget"];
+const BUDGETS_PILLS = ["Under ₦1m/yr", "₦1m-₦5m/yr", "₦5m+/yr", "Flexible budget"];
 const INFRASTRUCTURE_TAGS = ["Water Source", "Grid Power Connection", "Fenced Enclosure", "Heavy Truck Access", "High road proximity"];
 const TURNSTILE_SCRIPT_ID = "fieldlease-turnstile-script";
 const TURNSTILE_ACTION = "lead_capture";
